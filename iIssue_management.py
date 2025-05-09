@@ -6,13 +6,14 @@ import os
 import sys
 import subprocess
 import requests
+import webbrowser
 from pathlib import Path
 from urllib.parse import urlparse
 
 GITHUB_API = "https://api.github.com"
 TOKEN_PATH = Path.home() / ".github_token"
 
-
+# This function checks if the provided path is a valid Git repository
 def get_repo_path() -> Path:
     repo_path = input("Enter the path to your local Git repository: ").strip()
     path = Path(repo_path)
@@ -22,7 +23,7 @@ def get_repo_path() -> Path:
     os.chdir(path)
     return path
 
-
+# This function extracts the repository name from the Git remote URL
 def extract_repo_from_git() -> str:
     try:
         url = subprocess.check_output([
@@ -43,94 +44,118 @@ def extract_repo_from_git() -> str:
         print(f"Failed to extract repo name: {e}")
         sys.exit(1)
 
-
-def device_flow_login() -> str:
-    print("🔐 Starting GitHub login via Device Flow...")
-    client_id = "Iv1.06d6ba124b3d601d"  # GitHub public CLI client ID
-    resp = requests.post("https://github.com/login/device/code", data={
-        "client_id": client_id,
-        "scope": "repo"
-    }, headers={"Accept": "application/json"})
-    data = resp.json()
-    print(f"👉 Go to {data['verification_uri']} and enter code: {data['user_code']}")
-
-    interval = data.get("interval", 5)
-    token = None
-    while not token:
-        import time
-        time.sleep(interval)
-        poll_resp = requests.post("https://github.com/login/oauth/access_token", data={
-            "client_id": client_id,
-            "device_code": data["device_code"],
-            "grant_type": "urn:ietf:params:oauth:grant-type:device_code"
-        }, headers={"Accept": "application/json"})
-        poll_data = poll_resp.json()
-        if "access_token" in poll_data:
-            token = poll_data["access_token"]
-            break
-        elif poll_data.get("error") not in ("authorization_pending",):
-            print("❌ Login failed:", poll_data)
-            sys.exit(1)
+# This function prompts the user to create a GitHub token if not found
+def manual_token_login() -> str:
+    print("🔐 No saved GitHub token found.")
+    print("🌐 Opening GitHub token creation page in your browser...")
+    url = "https://github.com/settings/tokens/new?scopes=repo&description=IssueManagerCLI"
+    webbrowser.open(url)
+    token = input("Please paste your newly created GitHub token here: ").strip()
+    if not token:
+        print("❌ Token input was empty. Aborting.")
+        sys.exit(1)
     TOKEN_PATH.write_text(token)
-    print("✅ Login successful!")
+    print("✅ Token saved for future use.")
     return token
 
-
+# This function retrieves the GitHub token from the saved file or prompts for a new one
 def get_token() -> str:
     if TOKEN_PATH.exists():
         return TOKEN_PATH.read_text().strip()
-    return device_flow_login()
+    return manual_token_login()
 
-
+# This function returns the headers required for GitHub API requests
 def get_headers(token: str) -> dict:
     return {
         "Authorization": f"token {token}",
         "Accept": "application/vnd.github+json"
     }
 
-
+# This function displays the help menu for the CLI
 def show_help():
     print("""
 Commands:
-  -h / --help           Show this help menu
-  -o / --open           Open a new issue
-  -c / --close          Close an existing issue by number
-  -s / --show           Show issue list
-  -f [state]            Filter with --show by issue state:
-                        /o = open, /c = closed, /a = all
+  /h                  Show this help menu
+  /o [title]          Open a new issue with title
+  /c [title/number]   Close an existing issue by number or title
+  /s [state]          Show issue list default /a:
+                      /o = open, /c = closed, /a = all
+  /e                  Exit the CLI loop
     """)
 
-
-def command_handler(args, repo: str, token: str):
-    if args.help:
-        show_help()
-    elif args.open:
-        print("[OPEN] Handler placeholder: Prompt for title/body and open issue.")
-    elif args.close:
-        print("[CLOSE] Handler placeholder: Prompt for issue number and close.")
-    elif args.show:
-        state_map = {"/o": "open", "/c": "closed", "/a": "all"}
-        state = state_map.get(args.f, "open") if args.f else "open"
-        print(f"[SHOW] Handler placeholder: Listing issues with state = {state}")
+# This function creates a new issue in the specified repository
+def create_issue(repo: str, token: str, title: str):
+    url = f"{GITHUB_API}/repos/{repo}/issues"
+    data = {"title": title}
+    response = requests.post(url, headers=get_headers(token), json=data)
+    if response.status_code == 201:
+        issue = response.json()
+        print(f"✅ Issue #{issue['number']} created: {issue['title']}")
     else:
-        print("🔧 No valid command provided. Use --help to see available options.")
+        print(f"❌ Failed to create issue: {response.status_code} {response.text}")
+
+# This function lists issues based on the state provided
+def list_issues(repo: str, token: str, state: str):
+    url = f"{GITHUB_API}/repos/{repo}/issues?state={state}"
+    response = requests.get(url, headers=get_headers(token))
+    if response.status_code == 200:
+        issues = response.json()
+        for issue in issues:
+            print(f"#{issue['number']}: {issue['title']} [{issue['state']}]")
+    else:
+        print(f"❌ Failed to fetch issues: {response.status_code} {response.text}")
+
+
+# This function handles the command input and maps it to the appropriate function
+def command_handler(repo: str, token: str):
+    command_map = {
+        "/h": lambda args: show_help(),
+        "/o": lambda args: create_issue(repo, token, " ".join(args)) if args else print("❌ Please provide a title after /o"),
+        "/c": lambda args: close_issue(repo, token, args),
+        "/s": lambda args: list_issues(repo, token, {"/o": "open", "/c": "closed", "/a": "all"}.get(args[0], "all") if args else "all"),
+        "/e": lambda args: exit("👋 Exiting GitHub Issue Manager.")
+    }
+
+    while True:
+        raw = input("\n> Enter command: ").strip().split()
+        if not raw:
+            continue
+        cmd, args = raw[0], raw[1:]
+        handler = command_map.get(cmd)
+        if handler:
+            handler(args)
+        else:
+            print("Unrecognized command\n")
+            show_help()
+
+# This function closes an issue by its number or title
+def close_issue(repo: str, token: str, args: list):
+    if not args:
+        print("❌ Please provide an issue title or number after /c")
+        return
+    ref = args[0]
+    if ref.isdigit():
+        number = int(ref)
+        url = f"{GITHUB_API}/repos/{repo}/issues/{number}"
+        response = requests.patch(url, headers=get_headers(token), json={"state": "closed"})
+        if response.status_code == 200:
+            print(f"✅ Closed issue #{number}")
+        else:
+            print(f"❌ Failed to close issue: {response.status_code} {response.text}")
+    else:
+        print("❌ Closing by title is not yet supported.")
 
 
 def main():
+    print("\n==========================")
+    print("github issue manager v1.0\nCreated by Gal Mitrani\nhttps://github.com/Tapuz97")
+    print("==========================")
     get_repo_path()
     repo = extract_repo_from_git()
     token = get_token()
     print(f"\n✔ Repo detected: {repo}\n✔ Login verified 🎉\n")
-
-    parser = argparse.ArgumentParser(description="GitHub Issue Manager CLI", add_help=False)
-    parser.add_argument("-h", "--help", action="store_true")
-    parser.add_argument("-o", "--open", action="store_true")
-    parser.add_argument("-c", "--close", action="store_true")
-    parser.add_argument("-s", "--show", action="store_true")
-    parser.add_argument("-f", type=str, help="/o=open /c=closed /a=all")
-    args = parser.parse_args()
-
-    command_handler(args, repo, token)
+    show_help()
+    command_handler(repo, token)
 
 
 if __name__ == "__main__":
