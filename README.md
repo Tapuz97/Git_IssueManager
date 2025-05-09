@@ -48,15 +48,15 @@ pip install requests
 
 1. **Clone the Repository**:
    ```bash
-   git clone https://github.com/Tapuz97/github-issue-manager.git
+   git clone https://github.com/Tapuz97/Git_IssueManager.git
    ```
 2. **Navigate to the Project Directory**:
    ```bash
-   cd github-issue-manager
+   cd Git_IssueManager
    ```
 3. **Run the Script**:
    ```bash
-   python iIssue_management.py
+   python IssueManager.py
    ```
 
 Follow the prompts to authenticate and manage issues in your GitHub repository.
@@ -65,7 +65,7 @@ Follow the prompts to authenticate and manage issues in your GitHub repository.
 
 1. **Clone the Repository**:
    ```bash
-   git clone https://github.com/Tapuz97/github-issue-manager.git
+   git clone https://github.com/Tapuz97/Git_IssueManager.git
    ```
 2. **Install Dependencies**:
    ```bash
@@ -74,7 +74,7 @@ Follow the prompts to authenticate and manage issues in your GitHub repository.
 3. **Modify the Code** as needed.
 4. **Run the Script**:
    ```bash
-   python iIssue_management.py
+   python IssueManager.py
    ```
 
 ## Contribution
