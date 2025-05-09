@@ -48,7 +48,7 @@ def extract_repo_from_git() -> str:
 def manual_token_login() -> str:
     print("🔐 No saved GitHub token found.")
     print("🌐 Opening GitHub token creation page in your browser...")
-    url = "https://github.com/settings/tokens/new?scopes=repo&description=IssueManagerCLI"
+    url = "https://github.com/settings/tokens/new?scopes=repo&description=Tapuz97_GitIssueManager"
     webbrowser.open(url)
     token = input("Please paste your newly created GitHub token here: ").strip()
     if not token:
